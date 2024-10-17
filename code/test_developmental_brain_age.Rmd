@@ -1,0 +1,225 @@
+---
+title: "Test_developmental_brain_age_analysis"
+output: html_notebook
+---
+
+Load the necessary libraries
+
+```{r}
+library(readxl)
+library(openxlsx)
+library(stringr)
+library(dplyr)
+library(readr)
+```
+
+Load Files
+
+```{r}
+#Load excel file
+template_brainage <- read_excel("/KIMEL/tigrlab/scratch/jshah/TAY/freesurfer/output/template_brainage.xlsx")
+
+#Load parcellation files
+lh_thick <- read_tsv("/KIMEL/tigrlab/scratch/jshah/TAY/freesurfer/output/00_group2_stats_tables/lh.Schaefer2018_400Parcels.thickness.tsv")
+lh_surf <- read_tsv("/KIMEL/tigrlab/scratch/jshah/TAY/freesurfer/output/00_group2_stats_tables/lh.Schaefer2018_400Parcels.surfacearea.tsv")
+
+rh_thick <- read_tsv("/KIMEL/tigrlab/scratch/jshah/TAY/freesurfer/output/00_group2_stats_tables/rh.Schaefer2018_400Parcels.thickness.tsv")
+rh_surf <- read_tsv("/KIMEL/tigrlab/scratch/jshah/TAY/freesurfer/output/00_group2_stats_tables/rh.Schaefer2018_400Parcels.surfacearea.tsv")
+
+TAY_demographics <- read_csv("/KIMEL/tigrlab/scratch/jshah/tay_mri_demo_summer2024.csv")
+```
+
+Step 2: Function to clean column names by removing underscores and removing first n characters
+```{r}
+#save the original column names
+original_template_column_names <- colnames(template_brainage)
+
+#function to clean columns
+clean_columns <- function(df, remove_char_count) {
+  if (is.data.frame(df) && ncol(df) > 0) {
+    colnames(df) <- str_replace_all(colnames(df), "_", "")  # Remove underscores
+ 
+    # Check length of each column name and conditionally remove characters
+    colnames(df) <- ifelse(nchar(colnames(df)) > remove_char_count,
+                           str_sub(colnames(df), remove_char_count + 1), 
+                           colnames(df))  # Remove first n characters if long enough
+  }
+  return(df)
+}
+   
+```
+
+Clean the dataframes using the function
+
+```{r}
+lh_thickness_df <- clean_columns(lh_thick, 11)  # Clean lh_thick first
+lh_area_df <- clean_columns(lh_surf, 11)  # Clean lh_surf
+rh_thickness_df <- clean_columns(rh_thick, 11)  # Clean rh_thick first
+rh_area_df <- clean_columns(rh_surf, 11)  # Clean rh_surf
+
+template_df <- clean_columns(template_brainage, 10)
+```
+
+Rename thickness_df from thickness -> to thick
+
+```{r}
+colnames(lh_thickness_df) <- str_replace_all(colnames(lh_thickness_df), "thickness", "thick") 
+colnames(rh_thickness_df) <- str_replace_all(colnames(rh_thickness_df), "thickness", "thick") 
+
+```
+
+Step 3: Function to clean and standardize subject IDs for lh_thick and lh_surf
+
+```{r}
+clean_subject_ids_tsv <- function(df) {
+  colnames(df)[1] <- "clean_subject_id"  # Rename the first column to 'clean_subject_id'
+  df %>%
+    mutate(clean_subject_id = str_extract(clean_subject_id, "[0-9]{8}$"))  # Extract the last 8 digits of subject IDs
+}
+```
+
+Apply the subject_ID cleaning function to thickness and surface area files
+
+```{r}
+lh_thick_clean <- clean_subject_ids_tsv(lh_thickness_df)
+lh_surf_clean <- clean_subject_ids_tsv(lh_area_df)
+rh_thick_clean <- clean_subject_ids_tsv(rh_thickness_df)
+rh_surf_clean <- clean_subject_ids_tsv(rh_area_df)
+```
+
+Step 3b: Function to clean demo subject_IDs
+
+```{r}
+clean_subject_ids_demo <- function(df, subject_id) {
+  df %>%
+    mutate(clean_subject_id = str_extract(!!sym(subject_id), "[0-9]{8}$"))
+}
+```
+
+Clean subject IDs (after renaming columns)
+
+```{r}
+TAY_demographics <- clean_subject_ids_demo(TAY_demographics, "subject_id")
+```
+
+Step 3c: Rename subject_id to clean_subject_id in the 
+
+```{r}
+template_df <- template_df %>%
+  rename(clean_subject_id = subjectid)
+```
+
+Step 4: Filter for female subjects only from demographics dataframe
+
+```{r}
+female_data <- TAY_demographics %>%
+  filter(assigned_sex_at_birth == "Female") %>%
+  select(clean_subject_id, age_scan)  # Keep subject ID and age for merging
+```
+
+Step 5: Filter the thickness and area data for female subject IDs -> create function to filter subject_IDs? 
+
+```{r}
+female_lh_thickness_data <- lh_thick_clean %>%
+  filter(clean_subject_id %in% female_data$clean_subject_id)
+
+female_lh_area_data <- lh_surf_clean %>%
+  filter(clean_subject_id %in% female_data$clean_subject_id)
+
+female_rh_thickness_data <- rh_thick_clean %>%
+  filter(clean_subject_id %in% female_data$clean_subject_id)
+
+female_rh_area_data <- rh_surf_clean %>%
+  filter(clean_subject_id %in% female_data$clean_subject_id)
+```
+
+make the characters the same
+```{r}
+template_df$clean_subject_id <-as.character(template_df$clean_subject_id)
+```
+
+Ensure that all columns remain intact while adding the female data
+
+```{r}
+# First, check if template_df has rows
+if (nrow(template_df) == 0) {
+  # Create an empty data frame with the same structure as template_df but add the subject IDs and age
+  # Keep all the original columns, but add the new data
+  template_df <- template_df[0, ]  # Retain column structure but no rows
+  
+  # Now create a new data frame that only updates clean_subject_id and AGE
+  new_data <- data.frame(clean_subject_id = female_data$clean_subject_id,
+                         AGE = female_data$age_scan,
+                         stringsAsFactors = FALSE)
+  
+  # Bind the new data to the empty template, ensuring columns remain intact
+  template_df <- bind_rows(template_df, new_data)
+} else {
+  # If template_df already has rows, just update clean_subject_id and AGE columns
+  template_df$clean_subject_id <- female_data$clean_subject_id
+  template_df$AGE <- female_data$age_scan
+}
+
+```
+
+
+Check if subject IDs from both dataframes match
+
+```{r}
+common_ids <- intersect(template_df$clean_subject_id, female_lh_thickness_data$clean_subject_id)
+print(paste("Number of matching subject IDs:", length(common_ids)))
+```
+
+Make all of the logical variables into characters
+```{r}
+
+# Convert all columns in the template_df to characters
+template_df <- template_df %>%
+  mutate(across(everything(), as.character))
+
+female_data <- female_data %>%
+  mutate(across(everything(), as.character))
+
+female_lh_thickness_data <- female_lh_thickness_data %>%
+  mutate(across(everything(), as.character))
+
+female_lh_area_data <- female_lh_area_data %>%
+  mutate(across(everything(), as.character))
+
+female_rh_thickness_data <- female_rh_thickness_data %>%
+  mutate(across(everything(), as.character))
+
+female_rh_area_data <- female_rh_area_data %>%
+  mutate(across(everything(), as.character))
+```
+
+Step 6: Populate the template with female subject data
+Ensure that all the relevant data is properly merged
+
+```{r}
+final_template <- left_join(template_df[, c(1, 2)], female_lh_thickness_data, by = "clean_subject_id") %>%  
+  left_join(female_lh_area_data, by = "clean_subject_id") %>%
+  left_join(female_rh_area_data, by = "clean_subject_id") %>%
+  left_join(female_rh_thickness_data, by = "clean_subject_id")
+
+# Select only the columns from template_df
+final_template <- final_template %>%
+  select(names(template_df))  # Keeps only the columns in template_df  
+
+#Revert back to original column names found in the template
+colnames(final_template)[1:length(original_template_column_names)] <- original_template_column_names
+
+#remove columns with NA
+final_template <- final_template %>%
+  filter(!is.na(final_template[[3]]))
+```
+
+Step 7: Save the final populated template into a new Excel file
+
+```{r}
+output_file <- ("/KIMEL/tigrlab/scratch/jshah/TAY/freesurfer/output/populated_brain_age_template.xlsx")
+write.xlsx(final_template, output_file)
+
+print("Template has been populated and saved as 'populated_brain_age_template.xlsx'.")
+```
+
