@@ -1,0 +1,11 @@
+book_filename: "brain_age_analysis_bookdown"
+language:
+  ui:
+    chapter_name: "Chapter "
+delete_merged_file: true
+new_session: yes
+rmd_files: [
+  "index.Rmd",
+  #INSERT LIST OF RMD FILES HERE!!
+]
+output_dir: "../reports"

@@ -1,0 +1,13 @@
+---
+title: "Brain_Age_analysis analyses"
+author: "Jiya Shah"
+date: "`r Sys.Date()`"
+output: bookdown::gitbook
+github-repo: https://github.com/shahjiya/brain_age_analysis
+description: "This project will have the brain age analysis template creation scripts"
+fontsize: 10pt
+monofontoptions: "Scale=0.5"
+classoption: landscape
+---
+
+# The index page
