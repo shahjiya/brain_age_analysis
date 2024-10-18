@@ -1,7 +1,7 @@
 ---
-title: "Developmental_brain_age"
+title: "Network_brain_age"
 output: html_notebook
-date: 2024-1017
+date: 2024-10-18
 ---
 This is a script to create the Developmental BrainAge template (https://centilebrain.org/#/brainAGE) using freesurfer outputs.
 
@@ -22,59 +22,18 @@ Change sex to "Male" or "Female" depending on analysis.
 ```{r}
 
 #Load excel file
-template_brainage <- read_excel("../data/raw/developmental_template_brainage.xlsx")
+template_brainage <- read_excel("../data/raw/Network_BrainAGE_template.xlsx")
 
-sex <- "Male"
+sex <- "Female"
 
 #Load parcellation files
-lh_thick <- read_tsv("../data/raw/00_group2_stats_tables/lh.Schaefer2018_400Parcels.thickness.tsv")
-lh_surf <- read_tsv("../data/raw/00_group2_stats_tables/lh.Schaefer2018_400Parcels.surfacearea.tsv")
+lh_thick <- read_tsv("../data/raw/00_group2_stats_tables/lh.Schaefer2018_1000Parcels.thickness.tsv")
+lh_surf <- read_tsv("../data/raw/00_group2_stats_tables/lh.Schaefer2018_1000Parcels.surfacearea.tsv")
 
-rh_thick <- read_tsv("../data/raw/00_group2_stats_tables/rh.Schaefer2018_400Parcels.thickness.tsv")
-rh_surf <- read_tsv("../data/raw/00_group2_stats_tables/rh.Schaefer2018_400Parcels.surfacearea.tsv")
+rh_thick <- read_tsv("../data/raw/00_group2_stats_tables/rh.Schaefer2018_1000Parcels.thickness.tsv")
+rh_surf <- read_tsv("../data/raw/00_group2_stats_tables/rh.Schaefer2018_1000Parcels.surfacearea.tsv")
 
 TAY_demographics <- read_csv("../data/raw/tay_mri_demo_summer2024.csv")
-```
-
-Wrote a function to clean column names by removing underscores and removing first n characters. Saved the original column names first so that they match the template given by the centile brain. The length of the columns are checked because some column names have fewer characters and thus if they are removed, it will result in empty column headers. 
-
-```{r}
-#save the original column names
-original_template_column_names <- colnames(template_brainage)
-
-#function to clean columns
-clean_columns <- function(df, remove_char_count) {
-  if (is.data.frame(df) && ncol(df) > 0) {
-    colnames(df) <- str_replace_all(colnames(df), "_", "")  # Remove underscores
- 
-    # Check length of each column name and conditionally remove characters
-    colnames(df) <- ifelse(nchar(colnames(df)) > remove_char_count,
-                           str_sub(colnames(df), remove_char_count + 1), 
-                           colnames(df))  # Remove first n characters if long enough
-  }
-  return(df)
-}
-   
-```
-
-Clean the dataframes using the function
-
-```{r}
-lh_thickness_df <- clean_columns(lh_thick, 11)  
-lh_area_df <- clean_columns(lh_surf, 11)  
-rh_thickness_df <- clean_columns(rh_thick, 11)  
-rh_area_df <- clean_columns(rh_surf, 11)  
-
-#Different number of characters for the template
-template_df <- clean_columns(template_brainage, 10)
-```
-
-Rename thickness_df from thickness -> to thick to match the template column names
-
-```{r}
-colnames(lh_thickness_df) <- str_replace_all(colnames(lh_thickness_df), "thickness", "thick") 
-colnames(rh_thickness_df) <- str_replace_all(colnames(rh_thickness_df), "thickness", "thick") 
-
 ```
 
 Function to clean and standardize subject IDs for the thickness and surface area data
@@ -114,8 +73,8 @@ TAY_demographics <- clean_subject_ids_demo(TAY_demographics, "subject_id")
 Rename subject_id to clean_subject_id in the demographic file (to standardize the column name)
 
 ```{r}
-template_df <- template_df %>%
-  rename(clean_subject_id = subjectid)
+template_df <- template_brainage %>%
+  rename(clean_subject_id = SubjectID)
 ```
 
 Filter for sex specific subjects only from demographics dataframe and also take out age
@@ -123,14 +82,14 @@ Filter for sex specific subjects only from demographics dataframe and also take 
 ```{r}
 gendered_data <- TAY_demographics %>%
   filter(assigned_sex_at_birth == sex) %>%
-  select(clean_subject_id, age_scan)  # Keep subject ID and age for merging
+  select(clean_subject_id, age_scan, assigned_sex_at_birth)  # Keep subject ID, age, and sex for merging
 ```
 
 Filter the thickness and area data for female subject IDs -> create function to filter subject_IDs? 
 
 ```{r}
 gendered_lh_thickness_data <- lh_thick_clean %>%
-  filter(clean_subject_id %in% gendered_dataa$clean_subject_id)
+  filter(clean_subject_id %in% gendered_data$clean_subject_id)
 
 gendered_lh_area_data <- lh_surf_clean %>%
   filter(clean_subject_id %in% gendered_data$clean_subject_id)
@@ -146,8 +105,10 @@ Ensure that all columns remain intact while adding the female data
 
 ```{r}
 
-#Make sure the the subject_ids are character data types
-template_df$clean_subject_id <-as.character(template_df$clean_subject_id)
+# Make sure the subject_ids, sex, and age are character data types
+template_df$clean_subject_id <- as.character(template_df$clean_subject_id)
+template_df$sex <- as.character(template_df$sex)  # Add sex column conversion
+template_df$age <- as.character(template_df$age)  # Add age column conversion
 
 # First, check if template_df has rows
 if (nrow(template_df) == 0) {
@@ -157,12 +118,19 @@ if (nrow(template_df) == 0) {
   
   # Now create a new data frame that only updates clean_subject_id and AGE
   new_data <- data.frame(clean_subject_id =gendered_data$clean_subject_id,
-                         AGE = gendered_data$age_scan,
+                         age = gendered_data$age_scan,
+                         sex = gendered_data$assigned_sex_at_birth,
                          stringsAsFactors = FALSE)
+  
+  # Make them the same data type
+  new_data$clean_subject_id <- as.character(new_data$clean_subject_id)
+  new_data$sex <- as.character(new_data$sex)
+  new_data$age <- as.character(new_data$age)
   
   # Bind the new data to the empty template, ensuring columns remain intact
   template_df <- bind_rows(template_df, new_data)
 } else {
+  
   # If template_df already has rows, just update clean_subject_id and AGE columns
   template_df$clean_subject_id <- gendered_data$clean_subject_id
   template_df$AGE <- gendered_data$age_scan
@@ -189,16 +157,16 @@ template_df <- template_df %>%
 gendered_data <- gendered_data %>%
   mutate(across(everything(), as.character))
 
-gendered_lh_thickness_data <- lh_thickness_data %>%
+gendered_lh_thickness_data <- gendered_lh_thickness_data %>%
   mutate(across(everything(), as.character))
 
-gendered_lh_area_data <- lh_area_data %>%
+gendered_lh_area_data <- gendered_lh_area_data %>%
   mutate(across(everything(), as.character))
 
-gendered_rh_thickness_data <- rh_thickness_data %>%
+gendered_rh_thickness_data <- gendered_rh_thickness_data %>%
   mutate(across(everything(), as.character))
 
-gendered_rh_area_data <- rh_area_data %>%
+gendered_rh_area_data <- gendered_rh_area_data %>%
   mutate(across(everything(), as.character))
 ```
 
@@ -219,8 +187,6 @@ final_template <- final_template %>%
 final_template <- final_template %>%
   filter(!is.na(final_template[[3]]))
 
-#Revert back to original column names found in the template
-colnames(final_template)[1:length(original_template_column_names)] <- original_template_column_names
 ```
 
 Change all the data types to numeric and remove the first column of the subject ids because that was not in the original template. Make sure all the data types are numeric because the calculator will not work if they are different data types. 
