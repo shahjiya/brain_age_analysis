@@ -1,0 +1,15 @@
+skipping bids-validator...
+Writing stats tables to /derived/00_group2_stats_tables.
+Creating cortical stats table for lh aparc thickness
+SUBJECTS_DIR : /derived
+Parsing the .stats files
+
+ERROR: Cannot find stats file /derived/sub-CMH00000020/stats/lh.aparc.stats
+
+
+Traceback (most recent call last):
+  File "/run.py", line 551, in <module>
+    run(cmd, env={"SUBJECTS_DIR": output_dir, 'FS_LICENSE': args.license_file})
+  File "/run.py", line 29, in run
+    raise Exception("Non zero return code: %d" % process.returncode)
+Exception: Non zero return code: 1

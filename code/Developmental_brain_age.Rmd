@@ -24,7 +24,7 @@ Change sex to "Male" or "Female" depending on analysis.
 #Load excel file
 template_brainage <- read_excel("../data/raw/developmental_template_brainage.xlsx")
 
-sex <- "Male"
+sex <- "Female"
 
 #Load parcellation files
 lh_thick <- read_tsv("../data/raw/00_group2_stats_tables/lh.Schaefer2018_400Parcels.thickness.tsv")
@@ -118,19 +118,22 @@ template_df <- template_df %>%
   rename(clean_subject_id = subjectid)
 ```
 
-Filter for sex specific subjects only from demographics dataframe and also take out age
+First filters for time point because we only want baseline scans (also prevents duplicate subject_IDs in the final output). Then filters for sex and then creates a dataframe with subject Id, age, and sex. 
 
 ```{r}
+
 gendered_data <- TAY_demographics %>%
-  filter(assigned_sex_at_birth == sex) %>%
-  select(clean_subject_id, age_scan)  # Keep subject ID and age for merging
+  filter(time_point == "01") %>%  # First filter for the desired time_point
+  filter(assigned_sex_at_birth == sex) %>%  # Then filter for sex
+  select(clean_subject_id, age_scan, assigned_sex_at_birth)  # Keep subject ID, age, and sex for merging
+
 ```
 
 Filter the thickness and area data for female subject IDs -> create function to filter subject_IDs? 
 
 ```{r}
 gendered_lh_thickness_data <- lh_thick_clean %>%
-  filter(clean_subject_id %in% gendered_dataa$clean_subject_id)
+  filter(clean_subject_id %in% gendered_data$clean_subject_id)
 
 gendered_lh_area_data <- lh_surf_clean %>%
   filter(clean_subject_id %in% gendered_data$clean_subject_id)
@@ -189,16 +192,16 @@ template_df <- template_df %>%
 gendered_data <- gendered_data %>%
   mutate(across(everything(), as.character))
 
-gendered_lh_thickness_data <- lh_thickness_data %>%
+gendered_lh_thickness_data <- gendered_lh_thickness_data %>%
   mutate(across(everything(), as.character))
 
-gendered_lh_area_data <- lh_area_data %>%
+gendered_lh_area_data <- gendered_lh_area_data %>%
   mutate(across(everything(), as.character))
 
-gendered_rh_thickness_data <- rh_thickness_data %>%
+gendered_rh_thickness_data <- gendered_rh_thickness_data %>%
   mutate(across(everything(), as.character))
 
-gendered_rh_area_data <- rh_area_data %>%
+gendered_rh_area_data <- gendered_rh_area_data %>%
   mutate(across(everything(), as.character))
 ```
 

@@ -24,7 +24,7 @@ Change sex to "Male" or "Female" depending on analysis.
 #Load excel file
 template_brainage <- read_excel("../data/raw/Network_BrainAGE_template.xlsx")
 
-sex <- "Female"
+sex <- "Male"
 
 #Load parcellation files
 lh_thick <- read_tsv("../data/raw/00_group2_stats_tables/lh.Schaefer2018_1000Parcels.thickness.tsv")
@@ -49,10 +49,10 @@ clean_subject_ids_tsv <- function(df) {
 Apply the subject_ID cleaning function to thickness and surface area files
 
 ```{r}
-lh_thick_clean <- clean_subject_ids_tsv(lh_thickness_df)
-lh_surf_clean <- clean_subject_ids_tsv(lh_area_df)
-rh_thick_clean <- clean_subject_ids_tsv(rh_thickness_df)
-rh_surf_clean <- clean_subject_ids_tsv(rh_area_df)
+lh_thick_clean <- clean_subject_ids_tsv(lh_thick)
+lh_surf_clean <- clean_subject_ids_tsv(lh_surf)
+rh_thick_clean <- clean_subject_ids_tsv(rh_thick)
+rh_surf_clean <- clean_subject_ids_tsv(rh_surf)
 ```
 
 Function to clean demographic subject_IDs
@@ -77,12 +77,15 @@ template_df <- template_brainage %>%
   rename(clean_subject_id = SubjectID)
 ```
 
-Filter for sex specific subjects only from demographics dataframe and also take out age
+First filters for time point because we only want baseline scans (also prevents duplicate subject_IDs in the final output). Then filters for sex and then creates a dataframe with subject Id, age, and sex. 
 
 ```{r}
+
 gendered_data <- TAY_demographics %>%
-  filter(assigned_sex_at_birth == sex) %>%
+  filter(time_point == "01") %>%  # First filter for the desired time_point
+  filter(assigned_sex_at_birth == sex) %>%  # Then filter for sex
   select(clean_subject_id, age_scan, assigned_sex_at_birth)  # Keep subject ID, age, and sex for merging
+
 ```
 
 Filter the thickness and area data for female subject IDs -> create function to filter subject_IDs? 
@@ -101,7 +104,7 @@ gendered_rh_area_data <- rh_surf_clean %>%
   filter(clean_subject_id %in% gendered_data$clean_subject_id)
 ```
 
-Ensure that all columns remain intact while adding the female data
+Add the female subject_ID, age, and assigned sex to the template_df and this also ensures that there are enough rows to merge the data. 
 
 ```{r}
 
@@ -134,6 +137,26 @@ if (nrow(template_df) == 0) {
   # If template_df already has rows, just update clean_subject_id and AGE columns
   template_df$clean_subject_id <- gendered_data$clean_subject_id
   template_df$AGE <- gendered_data$age_scan
+}
+
+```
+
+Add the default values for the SITE (1 because they were all taken at the same site on the same scanner), ScannerType, and FreeSurfer_Version. Change values if needed. 
+
+```{r}
+
+# Create a named list of default values for columns with missing data
+default_values <- list(
+  SITE = "1",
+  ScannerType = "3",
+  FreeSurfer_Version = "7.0"
+)
+
+# Update existing columns with default values if they are NA
+for (col in names(default_values)) {
+  if (col %in% names(template_df)) {
+    template_df[[col]] <- ifelse(is.na(template_df[[col]]), default_values[[col]], template_df[[col]])
+  }
 }
 
 ```
@@ -174,7 +197,7 @@ Populate the template with female subject data and only keep the column names th
 Ensure that all the relevant data is properly merged.
 
 ```{r}
-final_template <- left_join(template_df[, c(1, 2)], gendered_lh_thickness_data, by = "clean_subject_id") %>%  
+final_template <- left_join(template_df[, c(1, 2, 3, 4, 5, 6)], gendered_lh_thickness_data, by = "clean_subject_id") %>%  
   left_join(gendered_lh_area_data, by = "clean_subject_id") %>%
   left_join(gendered_rh_thickness_data, by = "clean_subject_id") %>%
   left_join(gendered_rh_area_data, by = "clean_subject_id")
@@ -192,22 +215,42 @@ final_template <- final_template %>%
 Change all the data types to numeric and remove the first column of the subject ids because that was not in the original template. Make sure all the data types are numeric because the calculator will not work if they are different data types. 
 
 ```{r}
-# Extract the first column
-first_column <- final_template[, 1]
 
-# Convert all other rows and columns to numeric, starting from row 2 and column 2
-numeric_data <- final_template[, -1] %>%
+# Convert all other rows and columns to numeric
+numeric_data <- final_template %>%
   mutate_all(~suppressWarnings(as.numeric(as.character(.))))
 
 ```
 
-Save the final populated template into a new Excel file
+The Netowork brain age only accepts 150 participants at a time so multiple files need to be created to only have 150 participants per file. Output files in parts and then put them through the brain age calculator. 
 
 ```{r}
 
-output_file <- paste0("../data/processed/", tolower(sex), "_populated_developmental_template.xlsx")
-write.xlsx(numeric_data, output_file)
+# Number of participants per file (excluding the header)
+participants_per_file <- 150
 
-print(paste("Template has been populated and saved as", output_file))
+# Calculate how many files you need
+num_files <- ceiling(nrow(final_template) / participants_per_file)
+
+# Loop through the dataframe, slice into 150 participant chunks, and save each chunk
+for (i in 1:num_files) {
+  # Slice rows for participants
+  start_row <- (i-1)*participants_per_file + 1
+  end_row <- min(i*participants_per_file, nrow(final_template)) 
+  
+  chunked_participants <- final_template %>%
+    slice(start_row:end_row)
+  
+  # Create file name for each chunk
+  file_name <- paste0("../data/processed/", tolower(sex), "_network_template_part_", i, ".xlsx")
+  
+  # Write the chunk to an Excel file, keeping the header row
+  write.xlsx(chunked_participants, file_name)
+  
+  # Print a message for each file creation
+  print(paste("Saved file:", file_name))
+}
+
+
 ```
 
