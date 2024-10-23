@@ -24,7 +24,7 @@ Change sex to "Male" or "Female" depending on analysis.
 #Load excel file
 template_brainage <- read_excel("../data/raw/Network_BrainAGE_template.xlsx")
 
-sex <- "Male"
+sex <- "Female"
 
 #Load parcellation files
 lh_thick <- read_tsv("../data/raw/00_group2_stats_tables/lh.Schaefer2018_1000Parcels.thickness.tsv")
@@ -208,7 +208,7 @@ final_template <- final_template %>%
 
 #remove columns with NA
 final_template <- final_template %>%
-  filter(!is.na(final_template[[3]]))
+  filter(!is.na(final_template[[7]]))
 
 ```
 
@@ -218,11 +218,11 @@ Change all the data types to numeric and remove the first column of the subject 
 
 # Convert all other rows and columns to numeric
 numeric_data <- final_template %>%
-  mutate_all(~suppressWarnings(as.numeric(as.character(.))))
+  mutate_at(vars(-4), ~ as.numeric(as.character(.)))
 
 ```
 
-The Netowork brain age only accepts 150 participants at a time so multiple files need to be created to only have 150 participants per file. Output files in parts and then put them through the brain age calculator. 
+The Network brain age only accepts 150 participants at a time so multiple files need to be created to only have 150 participants per file. Output files in parts and then put them through the brain age calculator. 
 
 ```{r}
 
@@ -230,15 +230,15 @@ The Netowork brain age only accepts 150 participants at a time so multiple files
 participants_per_file <- 150
 
 # Calculate how many files you need
-num_files <- ceiling(nrow(final_template) / participants_per_file)
+num_files <- ceiling(nrow(numeric_data) / participants_per_file)
 
 # Loop through the dataframe, slice into 150 participant chunks, and save each chunk
 for (i in 1:num_files) {
   # Slice rows for participants
   start_row <- (i-1)*participants_per_file + 1
-  end_row <- min(i*participants_per_file, nrow(final_template)) 
+  end_row <- min(i*participants_per_file, nrow(numeric_data)) 
   
-  chunked_participants <- final_template %>%
+  chunked_participants <- numeric_data %>%
     slice(start_row:end_row)
   
   # Create file name for each chunk

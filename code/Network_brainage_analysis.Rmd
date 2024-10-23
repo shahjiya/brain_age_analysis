@@ -1,0 +1,78 @@
+---
+title: "network_brainage_merge"
+output: html_document
+---
+
+load libraries
+
+```{r}
+library(readxl)
+library(dplyr)
+library(openxlsx)
+```
+
+The network brain age templated was segmented by 150 participants and thus, the output files are also broken up in this way. To simplify the analysis, the files need to be merged into one .csv file. 
+
+#specify file path 
+
+```{r}
+
+file_path <- "../data/processed/Network_brainage_output"
+
+```
+
+Write a function that will merge files with a specific pattern and output a merged file
+
+```{r}
+# Function to merge files based on a given pattern
+merge_files_by_pattern <- function(file_suffix) {
+  # Create the file pattern using the provided suffix
+  pattern <- paste0("*", file_suffix, ".csv")
+  
+  # List all files matching the pattern
+  files <- list.files(path = file_path, pattern = pattern, full.names = TRUE)
+  
+  # Initialize an empty dataframe to store the combined data
+  combined_data <- data.frame()
+
+  # Loop through each file, read the data, and combine them
+  for (file in files) {
+    # Read the data from the CSV file
+    file_data <- read.csv(file)
+    
+    # Combine the data into the final dataframe
+    combined_data <- bind_rows(combined_data, file_data)
+  }
+
+  # Save the combined data into a new CSV file
+  output_file_name <- paste0(file_path, "combined_", file_suffix, ".csv")
+  write.csv(combined_data, output_file_name, row.names = FALSE)
+
+  # Print a message
+  print(paste("All files matching", file_suffix, "have been successfully combined and saved as:", output_file_name))
+}
+```
+
+Create a list of the file patterns that need to be put into the function and then loop the function through each file pattern to create 8 new merged files with network brainage outputs for both males and females.
+
+```{r}
+# List of file suffixes for both male and female
+file_suffixes <- c(
+  "Network_MR_predicted_age_female", 
+  "Network_BrainAGE_female", 
+  "Network_Adjusted_MR_predicted_age_female", 
+  "Network_Adjusted_BrainAGE_female",
+  "Network_MR_predicted_age_male", 
+  "Network_BrainAGE_male", 
+  "Network_Adjusted_MR_predicted_age_male", 
+  "Network_Adjusted_BrainAGE_male"
+)
+
+# Loop over each suffix and call the merge function
+for (suffix in file_suffixes) {
+  merge_files_by_pattern(suffix)
+}
+
+```
+
+
