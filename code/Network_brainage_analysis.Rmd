@@ -13,66 +13,233 @@ library(openxlsx)
 
 The network brain age templated was segmented by 150 participants and thus, the output files are also broken up in this way. To simplify the analysis, the files need to be merged into one .csv file. 
 
-#specify file path 
-
-```{r}
-
-file_path <- "../data/processed/Network_brainage_output"
-
-```
-
 Write a function that will merge files with a specific pattern and output a merged file
 
 ```{r}
-# Function to merge files based on a given pattern
-merge_files_by_pattern <- function(file_suffix) {
-  # Create the file pattern using the provided suffix
-  pattern <- paste0("*", file_suffix, ".csv")
+merge_files_with_pattern <- function(directory, common_patterns, output_file_name) {
+  for (common_pattern in common_patterns) {
+      # Create the file pattern using the provided common part of the file names
+    pattern <- paste0(".*", common_pattern, ".*\\.csv")
   
-  # List all files matching the pattern
-  files <- list.files(path = file_path, pattern = pattern, full.names = TRUE)
+    # List all files in the directory that match the pattern
+    files <- list.files(path = directory, pattern = pattern, full.names = TRUE)
   
-  # Initialize an empty dataframe to store the combined data
-  combined_data <- data.frame()
-
-  # Loop through each file, read the data, and combine them
-  for (file in files) {
-    # Read the data from the CSV file
-    file_data <- read.csv(file)
+    # Check if there are matching files
+    if (length(files) == 0) {
+      message(paste("No files found with the specified pattern:", common_pattern))
+      next
+    }
     
-    # Combine the data into the final dataframe
-    combined_data <- bind_rows(combined_data, file_data)
+        # Define the output file path
+    output_path <- file.path(directory, paste0("combined_", common_pattern, ".csv"))
+    
+    # Check if the output file already exists
+    if (file.exists(output_path)) {
+      message(paste("File already exists:", output_path, "- skipping file creation."))
+      next
+    }
+    
+    # Initialize an empty dataframe to store the combined data
+    combined_data <- data.frame()
+    
+    # Loop through each file, read its content, and bind the rows
+    for (file in files) {
+      # Read the data from the CSV file
+      file_data <- read.csv(file)
+      
+      # Combine the data into the final dataframe
+      combined_data <- rbind(combined_data, file_data)
+    }
+    
+    # Save the combined data into a new CSV file
+    write.csv(combined_data, output_path, row.names = FALSE)
+    
+    # Print a success message
+    print(paste("All files with pattern", common_pattern, "have been merged and saved as:", output_path))
   }
-
-  # Save the combined data into a new CSV file
-  output_file_name <- paste0(file_path, "combined_", file_suffix, ".csv")
-  write.csv(combined_data, output_file_name, row.names = FALSE)
-
-  # Print a message
-  print(paste("All files matching", file_suffix, "have been successfully combined and saved as:", output_file_name))
 }
+
 ```
 
 Create a list of the file patterns that need to be put into the function and then loop the function through each file pattern to create 8 new merged files with network brainage outputs for both males and females.
 
 ```{r}
-# List of file suffixes for both male and female
-file_suffixes <- c(
-  "Network_MR_predicted_age_female", 
-  "Network_BrainAGE_female", 
-  "Network_Adjusted_MR_predicted_age_female", 
-  "Network_Adjusted_BrainAGE_female",
-  "Network_MR_predicted_age_male", 
-  "Network_BrainAGE_male", 
-  "Network_Adjusted_MR_predicted_age_male", 
-  "Network_Adjusted_BrainAGE_male"
-)
+directory <- "/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Network_brainage_output"
+common_patterns <- c("Network_Adjusted_BrainAGE", "Network_MR_predicted_age", "Network_BrainAGE", "Network_Adjusted_MR_predicted_age")
+output_file_prefix <- "combined_output"
+merge_files_with_pattern(directory, common_patterns, output_file_prefox)
 
-# Loop over each suffix and call the merge function
-for (suffix in file_suffixes) {
-  merge_files_by_pattern(suffix)
-}
+```
+load necessary files
+
+```{r}
+
+#load network output files
+Network_Adjusted_BrainAGE <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Network_brainage_output/combined_Network_Adjusted_BrainAGE.csv", show_col_types = FALSE)
+
+Network_MR_predicted_age <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Network_brainage_output/combined_Network_MR_predicted_age.csv", show_col_types = FALSE)
+
+Network_BrainAGE <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Network_brainage_output/combined_Network_BrainAGE.csv", show_col_types = FALSE)
+
+Network_Adjusted_MR_predicted_age <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Network_brainage_output/combined_Network_Adjusted_MR_predicted_age.csv", show_col_types = FALSE)
+
+#Load demographic file
+
+tay_demo <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/raw/tay_mri_demo_summer2024.csv", show_col_types = FALSE)
+
+#load euler mean file
+
+euler_data <- read_tsv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/raw/00_group2_stats_tables/euler.tsv")
 
 ```
 
+clean demographic file subject IDs so that they match the output file format to be merged later
+
+```{r}
+clean_subject_ids_demo <- function(df, subject_id) {
+  df %>%
+    mutate(clean_subject_id = str_extract(!!sym(subject_id), "[0-9]{8}$"))
+}
+
+TAY_demographics <- clean_subject_ids_demo(tay_demo, "subject_id")
+
+```
+clean subject IDs for the euler_data file
+
+```{r}
+clean_subject_ids_tsv <- function(df) {
+  colnames(df)[1] <- "clean_subject_id"  # Rename the first column to 'clean_subject_id'
+  df %>%
+    mutate(clean_subject_id = str_extract(clean_subject_id, "[0-9]{8}$"))  # Extract the last 8 digits of subject IDs
+}
+
+euler_data_clean <- clean_subject_ids_tsv(euler_data)
+
+```
+
+turn the subject Ids to numeric because they wont match the output file otherwise
+
+```{r}
+TAY_demographics$clean_subject_id <- as.numeric(TAY_demographics$clean_subject_id)
+euler_data_clean$clean_subject_id <- as.numeric(euler_data_clean$clean_subject_id)
+
+print(TAY_demographics)
+print(euler_data_clean)
+```
+
+filtered for participant rows that have prodromal psychosis because not all participants have prodromal psychosis listed at T1
+
+```{r}
+# Group by subject ID and prioritize rows where symptoms are filled out
+# If symptoms are NA, the function will pick the first occurrence that has them filled
+TAY_unique_symptoms <- TAY_demographics %>%
+  group_by(clean_subject_id) %>%
+  arrange(desc(!is.na(prodromal_psychosis))) %>%  # Arrange to prioritize rows where symptoms are NOT NA
+  slice(1) %>%  # Keep the first row per subject (the one with symptoms, if available)
+  ungroup()
+
+# The result will be a dataframe with unique subject IDs and prioritized symptom data
+print(TAY_unique_symptoms)
+```
+
+Create a new dataframe with subject IDs from the female template, and age. Then import the PSS/non-PSS from the TAY demographics using the matching subject IDs. 
+
+```{r}
+final_analysis_data <- Network_MR_predicted_age %>%
+  select(clean_subject_id, age, sex)
+
+final_analysis_data <- final_analysis_data %>%
+  left_join(TAY_unique_symptoms %>%
+              select(clean_subject_id, prodromal_psychosis),
+            by = "clean_subject_id")
+
+```
+
+Add euler's mean
+
+```{r}
+
+final_analysis_data <- final_analysis_data %>%
+  left_join(euler_data_clean %>% 
+              select(clean_subject_id, mean_euler_bh),  
+            by = "clean_subject_id")
+
+```
+
+Add brain age calculator variables
+
+```{r}
+final_analysis_data<- final_analysis_data %>%
+  mutate(adj_pred_error_Vis = Network_Adjusted_BrainAGE$adj_pred_error_Vis, 
+         adj_pred_error_SomMot = Network_Adjusted_BrainAGE$adj_pred_error_SomMot,
+         adj_pred_error_DorsAttn = Network_Adjusted_BrainAGE$adj_pred_error_DorsAttn,
+         adj_pred_error_SalVentAttn = Network_Adjusted_BrainAGE$adj_pred_error_SalVentAttn,
+         adj_pred_error_Limbic = Network_Adjusted_BrainAGE$adj_pred_error_Limbic,
+         adj_pred_error_Cont = Network_Adjusted_BrainAGE$adj_pred_error_Cont,
+         adj_pred_error_Default = Network_Adjusted_BrainAGE$adj_pred_error_Default,
+         
+         adj_pred_age_Vis = Network_Adjusted_MR_predicted_age$adj_pred_age_Vis, 
+         adj_pred_age_SomMot = Network_Adjusted_MR_predicted_age$adj_pred_age_SomMot,
+         adj_pred_age_DorsAttn = Network_Adjusted_MR_predicted_age$adj_pred_age_DorsAttn,
+         adj_pred_age_SalVentAttn = Network_Adjusted_MR_predicted_age$adj_pred_age_SalVentAttn,
+         adj_pred_age_Limbic = Network_Adjusted_MR_predicted_age$adj_pred_age_Limbic,
+         adj_pred_age_Cont = Network_Adjusted_MR_predicted_age$adj_pred_age_Cont,
+         adj_pred_age_Default = Network_Adjusted_MR_predicted_age$adj_pred_age_Default,
+         
+         pred_error_Vis = Network_BrainAGE$pred_error_Vis, 
+         pred_error_SomMot = Network_BrainAGE$pred_error_SomMot,
+         pred_error_DorsAttn = Network_BrainAGE$pred_error_DorsAttn,
+         pred_error_SalVentAttn = Network_BrainAGE$pred_error_SalVentAttn,
+         pred_error_Limbic = Network_BrainAGE$pred_error_Limbic,
+         pred_error_Cont = Network_BrainAGE$pred_error_Cont,
+         pred_error_Default = Network_BrainAGE$pred_error_Default,
+         
+         pred_age_Vis = Network_MR_predicted_age$pred_age_Vis, 
+         pred_age_SomMot = Network_MR_predicted_age$pred_age_SomMot,
+         pred_age_DorsAttn = Network_MR_predicted_age$pred_age_DorsAttn,
+         pred_age_SalVentAttn = Network_MR_predicted_age$pred_age_SalVentAttn,
+         pred_age_Limbic = Network_MR_predicted_age$pred_age_Limbic,
+         pred_age_Cont = Network_MR_predicted_age$pred_age_Cont,
+         pred_age_Default = Network_MR_predicted_age$pred_age_Default,
+         )
+
+print(final_analysis_data)
+```
+
+
+Take out NAs from the dataframes
+
+```{r}
+
+final_network_analysis_data <- na.omit(final_analysis_data)
+
+
+```
+
+
+Run multivariable regression with PSS as the independent variable and adjusted BrainAGE as the dependent variable
+
+
+```{r}
+
+run_lm_model <- function(dependent_var, independent_vars, data) {
+  # Create a formula dynamically
+  formula <- as.formula(paste(dependent_var, "~", paste(independent_vars, collapse = " + ")))
+
+  # Run the linear model with the formula and the data explicitly specified
+  lm_model <- lm(formula, data = data)
+
+  # Print summary of the model
+  return(summary(lm_model))
+}
+
+dependent_vars <- c("adj_pred_error_Vis", "adj_pred_error_SomMot", "adj_pred_error_DorsAttn", "adj_pred_error_SalVentAttn", "adj_pred_error_Limbic", "adj_pred_error_Cont", "adj_pred_error_Default", "adj_pred_age_Vis", "adj_pred_age_SomMot", "adj_pred_age_DorsAttn", "adj_pred_age_SalVentAttn", "adj_pred_age_Limbic", "adj_pred_age_Cont", "adj_pred_age_Default", "pred_error_SomMot",      "pred_error_DorsAttn", "pred_error_SalVentAttn", "pred_error_Limbic","pred_error_Cont","pred_error_Default", "pred_age_Vis","pred_age_SomMot","pred_age_DorsAttn", "pred_age_SalVentAttn","pred_age_Limbic",            "pred_age_Cont","pred_age_Default","pred_error_Vis","adj_pred_error_Vis")
+
+for (dep_var in dependent_vars) {
+  cat("Running linear model for:", dep_var, "\n")
+  lm_summary <- run_lm_model(dep_var, c("prodromal_psychosis", "sex", "mean_euler_bh"), final_network_analysis_data)
+  print(lm_summary)  # Print the summary of the model
+}
+
+```
 

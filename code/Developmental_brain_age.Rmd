@@ -24,7 +24,7 @@ Change sex to "Male" or "Female" depending on analysis.
 #Load excel file
 template_brainage <- read_excel("../data/raw/developmental_template_brainage.xlsx")
 
-sex <- "Female"
+sex <- "Male"
 
 #Load parcellation files
 lh_thick <- read_tsv("../data/raw/00_group2_stats_tables/lh.Schaefer2018_400Parcels.thickness.tsv")
@@ -225,6 +225,14 @@ final_template <- final_template %>%
 #Revert back to original column names found in the template
 colnames(final_template)[1:length(original_template_column_names)] <- original_template_column_names
 ```
+
+Output a .csv file that containst the subject ID and the age so that they can be used for the analysis after
+
+```{r}
+output_csv_file <- paste0("../data/processed/", tolower(sex), "_subID_developmental_template.csv")
+write.csv(final_template, file = output_csv_file, row.names = FALSE)
+```
+
 
 Change all the data types to numeric and remove the first column of the subject ids because that was not in the original template. Make sure all the data types are numeric because the calculator will not work if they are different data types. 
 

@@ -3,26 +3,300 @@ title: "developmental_brainage_analysis"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+load libraries
+
+```{r}
+library(ggplot2)
+library(readr)
+library(readxl)
 ```
 
-## R Markdown
+load files
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r}
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+#Male data
+MR_predicted_age_male <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-50-10_MR_predicted_age_male.csv", show_col_types = FALSE)
 
-```{r cars}
-summary(cars)
+BrainAGE_male <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-50-10_BrainAGE_male.csv", show_col_types = FALSE)
+
+Adjusted_MR_predicted_age_male <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-50-10_Adjusted_MR_predicted_age_male.csv", show_col_types = FALSE)
+
+Adjusted_BrainAGE_male <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-50-10_Adjusted_BrainAGE_male.csv", show_col_types = FALSE)
+
+#Female data
+MR_predicted_age_female <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-45-31_MR_predicted_age_female.csv", show_col_types = FALSE)
+
+BrainAGE_female <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-45-31_BrainAGE_female.csv", show_col_types = FALSE)
+
+Adjusted_MR_predicted_age_female <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-45-31_Adjusted_MR_predicted_age_female.csv", show_col_types = FALSE)
+
+Adjusted_BrainAGE_female <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-45-31_Adjusted_BrainAGE_female.csv", show_col_types = FALSE)
+
+#Load euler's number
+
+euler_data <- read_tsv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/raw/00_group2_stats_tables/euler.tsv")
+
+#Load male template because it has real age
+
+male_developmental_template <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/male_subID_developmental_template.csv", show_col_types = FALSE)
+
+#Load female template because it has real age and subject ID
+
+female_developmental_template <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/female_subID_developmental_template.csv", show_col_types = FALSE)
+
+#Load TAY demographic data to get PSS
+
+tay_demo <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/raw/tay_mri_demo_summer2024.csv", show_col_types = FALSE)
+
+```
+Function to clean demographic subject_IDs
+
+```{r}
+clean_subject_ids_demo <- function(df, subject_id) {
+  df %>%
+    mutate(clean_subject_id = str_extract(!!sym(subject_id), "[0-9]{8}$"))
+}
 ```
 
-## Including Plots
+Use the function to clean the demographic subject ids
 
-You can also embed plots, for example:
+```{r}
+TAY_demographics <- clean_subject_ids_demo(tay_demo, "subject_id")
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+female_developmental_template <- female_developmental_template %>%
+  rename(clean_subject_id = subject_id)
+
+male_developmental_template <- male_developmental_template %>%
+  rename(clean_subject_id = subject_id)
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+clean subject IDs for the euler_data file
+
+```{r}
+clean_subject_ids_tsv <- function(df) {
+  colnames(df)[1] <- "clean_subject_id"  # Rename the first column to 'clean_subject_id'
+  df %>%
+    mutate(clean_subject_id = str_extract(clean_subject_id, "[0-9]{8}$"))  # Extract the last 8 digits of subject IDs
+}
+
+euler_data_clean <- clean_subject_ids_tsv(euler_data)
+
+print(euler_data_clean)
+```
+
+
+filtered for participant rows that have prodromal psychosis because not all participants have prodromal psychosis listed at T1
+
+```{r}
+# Group by subject ID and prioritize rows where symptoms are filled out
+# If symptoms are NA, the function will pick the first occurrence that has them filled
+TAY_unique_symptoms <- TAY_demographics %>%
+  group_by(clean_subject_id) %>%
+  arrange(desc(!is.na(prodromal_psychosis))) %>%  # Arrange to prioritize rows where symptoms are NOT NA
+  slice(1) %>%  # Keep the first row per subject (the one with symptoms, if available)
+  ungroup()
+
+# The result will be a dataframe with unique subject IDs and prioritized symptom data
+print(TAY_unique_symptoms)
+```
+
+Create a new dataframe with subject IDs from the female template, and age. Then import the PSS/non-PSS from the TAY demographics using the matching subject IDs. 
+
+```{r}
+# Step 1: Extract subject ID and age from female_developmental_template
+female_data <- female_developmental_template %>%
+  select(clean_subject_id, AGE)  # Assuming 'clean_subject_id' and 'age' are the column names
+
+# Step 2: Use left_join to get sex and PSS from TAY_demographics
+# Assuming 'TAY_demographics' has columns 'clean_subject_id', 'assigned_sex_at_birth', and 'prodromal_psychosis'
+final_analysis_female_data <- female_data %>%
+  left_join(TAY_unique_symptoms %>% 
+              select(clean_subject_id, assigned_sex_at_birth, prodromal_psychosis),  # Select relevant columns
+            by = "clean_subject_id")  # Merge by subject ID
+
+print(final_analysis_female_data)
+```
+
+Do the same for the male participants 
+
+```{r}
+# Step 1: Extract subject ID and age from female_developmental_template
+male_data <- male_developmental_template %>%
+  select(clean_subject_id, AGE)  # Assuming 'clean_subject_id' and 'age' are the column names
+
+# Step 2: Use left_join to get sex and PSS from TAY_demographics
+# Assuming 'TAY_demographics' has columns 'clean_subject_id', 'assigned_sex_at_birth', and 'prodromal_psychosis'
+final_analysis_male_data <- male_data %>%
+  left_join(TAY_unique_symptoms %>% 
+              select(clean_subject_id, assigned_sex_at_birth, prodromal_psychosis),  # Select relevant columns
+            by = "clean_subject_id")  # Merge by subject ID
+
+print(final_analysis_male_data)
+```
+
+
+Add the brain age calculator output. This includes female_age, female_error, corage_female, female_adjerror
+
+```{r}
+final_analysis_female_data<- final_analysis_female_data %>%
+  mutate(female_age = MR_predicted_age_female$female_age, 
+         female_error = BrainAGE_female$female_error,
+         corage_female = Adjusted_MR_predicted_age_female$corage_female,
+         female_adjerror = Adjusted_BrainAGE_female$female_adjerror)
+
+# Rename the columns
+final_analysis_female_data <- final_analysis_female_data %>%
+  rename(
+    predicted_age = female_age, 
+    BrainAGE = female_error,
+    Adjusted_predicted_age = corage_female,
+    Adjusted_BrainAGE = female_adjerror
+  )
+
+# Print the updated dataframe to check the new column names
+print(final_analysis_female_data)
+```
+
+Add brain age calculations for male data 
+
+```{r}
+final_analysis_male_data<- final_analysis_male_data %>%
+  mutate(male_age = MR_predicted_age_male$male_age, 
+         male_error = BrainAGE_male$male_error,
+         corage_male = Adjusted_MR_predicted_age_male$corage_male,
+         male_adjerror = Adjusted_BrainAGE_male$male_adjerror)
+
+# Rename the columns
+final_analysis_male_data <- final_analysis_male_data %>%
+  rename(
+    predicted_age = male_age, 
+    BrainAGE = male_error,
+    Adjusted_predicted_age = corage_male,
+    Adjusted_BrainAGE = male_adjerror
+  )
+
+print(final_analysis_male_data)
+```
+
+combine the female and male data to create one dataframe to work with
+
+```{r}
+combined_analysis_data <- rbind(final_analysis_female_data, final_analysis_male_data)
+
+print(combined_analysis_data)
+```
+
+Add euler's number to the combined_analysis_data and join based on subject ID
+
+```{r}
+combined_analysis_data <- combined_analysis_data %>%
+  left_join(euler_data_clean %>% 
+              select(clean_subject_id, mean_euler_bh),  # Select relevant columns
+            by = "clean_subject_id")  # Merge by subject ID
+
+print(combined_analysis_data)
+```
+
+
+Run a correlational analysis between AGE (real age) and corage_female 
+
+```{r}
+
+plot(combined_analysis_data$AGE, combined_analysis_data$Adjusted_predicted_age, main = "Association Between Real Age and Predicted Age",
+     xlab = "Real Age", ylab = "Predicted Age",
+     pch = 19, frame = FALSE)
+cor.test(combined_analysis_data$AGE, combined_analysis_data$Adjusted_predicted_age, method = 'pearson')
+  
+```
+
+
+Run linear regression between brain age and psychosis symptoms
+
+```{r}
+
+plot(combined_analysis_data$prodromal_psychosis, combined_analysis_data$Adjusted_predicted_age,
+     main = "Association Between Psychosis Spectrum Symptoms and Predicted BrainAGE",
+     xlab = "Psychosis Spectrum Symptoms", ylab = "Predicted Age",
+     pch = 19, frame = FALSE, col = "blue")
+
+# Run a linear regression analysis
+lm_model <- lm(Adjusted_predicted_age ~ prodromal_psychosis, data = combined_analysis_data)
+
+# Add the regression line to the plot
+abline(lm_model, col = "red", lwd = 2)
+
+# Print the linear regression model summary
+summary(lm_model)
+
+```
+
+Run regression analysis for BrainAGE and PSS
+
+```{r}
+plot(combined_analysis_data$prodromal_psychosis, combined_analysis_data$Adjusted_BrainAGE,
+     main = "Association Between Psychosis Spectrum Symptoms and Predicted BrainAGE",
+     xlab = "Psychosis Spectrum Symptoms", ylab = "Adjusted BrainAGE",
+     pch = 19, frame = FALSE, col = "blue")
+
+# Run a linear regression analysis
+lm_model <- lm(prodromal_psychosis ~ Adjusted_BrainAGE, data = combined_analysis_data)
+
+# Add the regression line to the plot
+abline(lm_model, col = "red", lwd = 2)
+
+# Print the linear regression model summary
+summary(lm_model)
+```
+
+Run multivariable regression with PSS as the independent variable and predicted brainage as the dependent variable
+
+```{r}
+lm_model <- lm(Adjusted_predicted_age ~ prodromal_psychosis + assigned_sex_at_birth + mean_euler_bh, data = combined_analysis_data)
+
+# View the summary of the regression model
+summary(lm_model)
+
+# Plot the relationship between predicted age and PSS
+plot(combined_analysis_data$prodromal_psychosis, combined_analysis_data$Adjusted_predicted_age,
+     main = "Association Between Predicted Age and PSS",
+     xlab = "Psychosis Spectrum Symptoms", ylab = "Predicted Age",
+     pch = 19, frame = FALSE,)
+
+
+```
+Multivariable regression for BrainAGE and PSS
+
+```{r}
+lm_model <- lm(Adjusted_BrainAGE ~ prodromal_psychosis + assigned_sex_at_birth + mean_euler_bh, data = combined_analysis_data)
+
+# View the summary of the regression model
+summary(lm_model)
+
+# Plot the relationship between predicted age and PSS
+plot(combined_analysis_data$prodromal_psychosis, combined_analysis_data$Adjusted_BrainAGE, 
+     main = "Association Between BrainAGE and PSS",
+     xlab ="Psychosis Spectrum Symptoms", ylab = "Adjusted BrainAGE" ,
+     pch = 19, frame = FALSE,)
+
+```
+Plot the variables of interest just to get an idea of what the data looks like
+
+```{r}
+# Plot the relationship between predicted age and Mean Euler
+plot(combined_analysis_data$Adjusted_BrainAGE, combined_analysis_data$mean_euler_bh,
+     main = "Association Between BrainAGE and Mean Euler",
+     xlab = "Adjusted BrainAGE", ylab = "Mean Euler",
+     pch = 19, frame = FALSE,)
+
+# Plot the relationship between predicted PSS and Sex
+plot(combined_analysis_data$prodromal_psychosis, combined_analysis_data$Adjusted_BrainAGE, 
+     main = "Association Between PSS and Sex",
+     xlab = "PSS", ylab = "Sex",
+     pch = 19, frame = FALSE,)
+
+```
+
+
+```{r}
