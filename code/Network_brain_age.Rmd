@@ -3,7 +3,7 @@ title: "Network_brain_age"
 output: html_notebook
 date: 2024-10-18
 ---
-This is a script to create the Developmental BrainAge template (https://centilebrain.org/#/brainAGE) using freesurfer outputs.
+This is a script to create and populate the Developmental BrainAge template (https://centilebrain.org/#/brainAGE) using freesurfer outputs.
 
 
 Load the necessary libraries
@@ -24,7 +24,7 @@ Change sex to "Male" or "Female" depending on analysis.
 #Load excel file
 template_brainage <- read_excel("../data/raw/Network_BrainAGE_template.xlsx")
 
-sex <- "Female"
+sex <- "Male"
 
 #Load parcellation files
 lh_thick <- read_tsv("../data/raw/00_group2_stats_tables/lh.Schaefer2018_1000Parcels.thickness.tsv")
@@ -209,6 +209,11 @@ final_template <- final_template %>%
 #remove columns with NA
 final_template <- final_template %>%
   filter(!is.na(final_template[[7]]))
+
+#remove participant 00000020
+
+final_template <- final_template %>%
+  filter(clean_subject_id != "00000020")
 
 ```
 

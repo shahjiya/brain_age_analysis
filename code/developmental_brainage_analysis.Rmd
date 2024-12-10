@@ -9,6 +9,10 @@ load libraries
 library(ggplot2)
 library(readr)
 library(readxl)
+library(rstatix)
+library(broom)
+library(stringr)
+library(dplyr)
 ```
 
 load files
@@ -16,22 +20,22 @@ load files
 ```{r}
 
 #Male data
-MR_predicted_age_male <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-50-10_MR_predicted_age_male.csv", show_col_types = FALSE)
+MR_predicted_age_male <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/full_developmental_output/output_file_2024-10-28-00-45-29_MR_predicted_age_male.csv", show_col_types = FALSE)
 
-BrainAGE_male <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-50-10_BrainAGE_male.csv", show_col_types = FALSE)
+BrainAGE_male <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/full_developmental_output/output_file_2024-10-28-00-45-29_BrainAGE_male.csv", show_col_types = FALSE)
 
-Adjusted_MR_predicted_age_male <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-50-10_Adjusted_MR_predicted_age_male.csv", show_col_types = FALSE)
+Adjusted_MR_predicted_age_male <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/full_developmental_output/output_file_2024-10-28-00-45-29_Adjusted_MR_predicted_age_male.csv", show_col_types = FALSE)
 
-Adjusted_BrainAGE_male <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-50-10_Adjusted_BrainAGE_male.csv", show_col_types = FALSE)
+Adjusted_BrainAGE_male <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/full_developmental_output/output_file_2024-10-28-00-45-29_Adjusted_BrainAGE_male.csv", show_col_types = FALSE)
 
 #Female data
-MR_predicted_age_female <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-45-31_MR_predicted_age_female.csv", show_col_types = FALSE)
+MR_predicted_age_female <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/full_developmental_output/output_file_2024-10-28-00-40-48_MR_predicted_age_female.csv", show_col_types = FALSE)
 
-BrainAGE_female <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-45-31_BrainAGE_female.csv", show_col_types = FALSE)
+BrainAGE_female <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/full_developmental_output/output_file_2024-10-28-00-40-48_BrainAGE_female.csv", show_col_types = FALSE)
 
-Adjusted_MR_predicted_age_female <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-45-31_Adjusted_MR_predicted_age_female.csv", show_col_types = FALSE)
+Adjusted_MR_predicted_age_female <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/full_developmental_output/output_file_2024-10-28-00-40-48_Adjusted_MR_predicted_age_female.csv", show_col_types = FALSE)
 
-Adjusted_BrainAGE_female <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/developmental_brainage_output/output_file_2024-10-22-22-45-31_Adjusted_BrainAGE_female.csv", show_col_types = FALSE)
+Adjusted_BrainAGE_female <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/full_developmental_output/output_file_2024-10-28-00-40-48_Adjusted_BrainAGE_female.csv", show_col_types = FALSE)
 
 #Load euler's number
 
@@ -49,6 +53,9 @@ female_developmental_template <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_ag
 
 tay_demo <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/raw/tay_mri_demo_summer2024.csv", show_col_types = FALSE)
 
+#Load data cut file 
+datacut_ids <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/raw/datacut_ids.csv")
+
 ```
 Function to clean demographic subject_IDs
 
@@ -64,11 +71,19 @@ Use the function to clean the demographic subject ids
 ```{r}
 TAY_demographics <- clean_subject_ids_demo(tay_demo, "subject_id")
 
+datacut_ids_clean <- clean_subject_ids_demo(datacut_ids, "subject_id")
+
 female_developmental_template <- female_developmental_template %>%
   rename(clean_subject_id = subject_id)
 
+female_developmental_template <- female_developmental_template %>%
+  mutate(sex = "Female")
+
 male_developmental_template <- male_developmental_template %>%
   rename(clean_subject_id = subject_id)
+
+male_developmental_template <- male_developmental_template %>%
+  mutate(sex = "Male")
 
 ```
 
@@ -107,13 +122,13 @@ Create a new dataframe with subject IDs from the female template, and age. Then 
 ```{r}
 # Step 1: Extract subject ID and age from female_developmental_template
 female_data <- female_developmental_template %>%
-  select(clean_subject_id, AGE)  # Assuming 'clean_subject_id' and 'age' are the column names
+  select(clean_subject_id, AGE, sex)  # Assuming 'clean_subject_id' and 'age' are the column names
 
 # Step 2: Use left_join to get sex and PSS from TAY_demographics
 # Assuming 'TAY_demographics' has columns 'clean_subject_id', 'assigned_sex_at_birth', and 'prodromal_psychosis'
 final_analysis_female_data <- female_data %>%
   left_join(TAY_unique_symptoms %>% 
-              select(clean_subject_id, assigned_sex_at_birth, prodromal_psychosis),  # Select relevant columns
+              select(clean_subject_id, prodromal_psychosis),  # Select relevant columns
             by = "clean_subject_id")  # Merge by subject ID
 
 print(final_analysis_female_data)
@@ -124,13 +139,13 @@ Do the same for the male participants
 ```{r}
 # Step 1: Extract subject ID and age from female_developmental_template
 male_data <- male_developmental_template %>%
-  select(clean_subject_id, AGE)  # Assuming 'clean_subject_id' and 'age' are the column names
+  select(clean_subject_id, AGE, sex)  # Assuming 'clean_subject_id' and 'age' are the column names
 
 # Step 2: Use left_join to get sex and PSS from TAY_demographics
 # Assuming 'TAY_demographics' has columns 'clean_subject_id', 'assigned_sex_at_birth', and 'prodromal_psychosis'
 final_analysis_male_data <- male_data %>%
   left_join(TAY_unique_symptoms %>% 
-              select(clean_subject_id, assigned_sex_at_birth, prodromal_psychosis),  # Select relevant columns
+              select(clean_subject_id, prodromal_psychosis),  # Select relevant columns
             by = "clean_subject_id")  # Merge by subject ID
 
 print(final_analysis_male_data)
@@ -199,30 +214,89 @@ combined_analysis_data <- combined_analysis_data %>%
 print(combined_analysis_data)
 ```
 
+Filter for people who are in the TAY data cut 
+
+```{r}
+# Assuming 'sub_ID' is the column to match in both data frames and that `t01` is a logical or character column.
+combined_analysis_data <- combined_analysis_data %>%
+  # Join with datacut_ids_clean to bring in the 't01' column
+  left_join(datacut_ids_clean %>% select(clean_subject_id, t01), by = "clean_subject_id")
+
+# View the result
+print(combined_analysis_data)
+
+datacut_filtered_data <- combined_analysis_data %>%
+  filter(t01 == TRUE)
+
+# View the result
+print(datacut_filtered_data)
+
+```
+Remove high euler number (cut off above 200)
+
+```{r}
+euler_filtered_data <- datacut_filtered_data %>%
+  filter(mean_euler_bh >= -200)
+
+print(euler_filtered_data)
+
+```
+
+
+View all NAs
+
+```{r}
+rows_with_na_develop <- euler_filtered_data %>%
+  filter(if_any(everything(), is.na))
+sum(is.na(euler_filtered_data$prodromal_psychosis))
+
+print(rows_with_na_develop)
+
+cleaned_filtered_data <- na.omit(euler_filtered_data)
+
+print(cleaned_filtered_data)
+
+write.csv(cleaned_filtered_data, "/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/complete_developmental_data.csv", row.names = FALSE)
+```
+
+
+Run summary statistics
+
+```{r}
+
+summary(cleaned_filtered_data)
+table(cleaned_filtered_data$sex)
+
+```
 
 Run a correlational analysis between AGE (real age) and corage_female 
 
 ```{r}
 
-plot(combined_analysis_data$AGE, combined_analysis_data$Adjusted_predicted_age, main = "Association Between Real Age and Predicted Age",
+plot(cleaned_filtered_data$AGE, cleaned_filtered_data$Adjusted_predicted_age, main = "Association Between Real Age and Adjusted Predicted Age",
+     xlab = "Real Age", ylab = "Adjusted Predicted Age",
+     pch = 19, frame = FALSE, col = "blue")
+cor.test(cleaned_filtered_data$AGE, cleaned_filtered_data$Adjusted_predicted_age, method = 'pearson')
+
+plot(cleaned_filtered_data$AGE, cleaned_filtered_data$predicted_age, main = "Association Between Real Age and Predicted Age",
      xlab = "Real Age", ylab = "Predicted Age",
      pch = 19, frame = FALSE)
-cor.test(combined_analysis_data$AGE, combined_analysis_data$Adjusted_predicted_age, method = 'pearson')
-  
+cor.test(cleaned_filtered_data$AGE, cleaned_filtered_data$predicted_age, method = 'pearson')
+
 ```
 
 
-Run linear regression between brain age and psychosis symptoms
+Run linear regression between predicted age and psychosis symptoms
 
 ```{r}
 
-plot(combined_analysis_data$prodromal_psychosis, combined_analysis_data$Adjusted_predicted_age,
+plot(cleaned_filtered_data$prodromal_psychosis, cleaned_filtered_data$Adjusted_predicted_age,
      main = "Association Between Psychosis Spectrum Symptoms and Predicted BrainAGE",
      xlab = "Psychosis Spectrum Symptoms", ylab = "Predicted Age",
      pch = 19, frame = FALSE, col = "blue")
 
 # Run a linear regression analysis
-lm_model <- lm(Adjusted_predicted_age ~ prodromal_psychosis, data = combined_analysis_data)
+lm_model <- lm(Adjusted_predicted_age ~ prodromal_psychosis, data = cleaned_filtered_data)
 
 # Add the regression line to the plot
 abline(lm_model, col = "red", lwd = 2)
@@ -235,13 +309,13 @@ summary(lm_model)
 Run regression analysis for BrainAGE and PSS
 
 ```{r}
-plot(combined_analysis_data$prodromal_psychosis, combined_analysis_data$Adjusted_BrainAGE,
+plot(cleaned_filtered_data$prodromal_psychosis, cleaned_filtered_data$Adjusted_BrainAGE,
      main = "Association Between Psychosis Spectrum Symptoms and Predicted BrainAGE",
      xlab = "Psychosis Spectrum Symptoms", ylab = "Adjusted BrainAGE",
      pch = 19, frame = FALSE, col = "blue")
 
 # Run a linear regression analysis
-lm_model <- lm(prodromal_psychosis ~ Adjusted_BrainAGE, data = combined_analysis_data)
+lm_model <- lm(prodromal_psychosis ~ Adjusted_BrainAGE, data = cleaned_filtered_data)
 
 # Add the regression line to the plot
 abline(lm_model, col = "red", lwd = 2)
@@ -253,29 +327,27 @@ summary(lm_model)
 Run multivariable regression with PSS as the independent variable and predicted brainage as the dependent variable
 
 ```{r}
-lm_model <- lm(Adjusted_predicted_age ~ prodromal_psychosis + assigned_sex_at_birth + mean_euler_bh, data = combined_analysis_data)
+run_lm_model <- function(dependent_var, independent_vars, data) {
+  # Create a formula dynamically
+  formula <- as.formula(paste(dependent_var, "~", paste(independent_vars, collapse = " + ")))
 
-# View the summary of the regression model
-summary(lm_model)
+  # Run the linear model with the formula and the data explicitly specified
+  lm_model <- lm(formula, data = data)
 
-# Plot the relationship between predicted age and PSS
-plot(combined_analysis_data$prodromal_psychosis, combined_analysis_data$Adjusted_predicted_age,
-     main = "Association Between Predicted Age and PSS",
-     xlab = "Psychosis Spectrum Symptoms", ylab = "Predicted Age",
-     pch = 19, frame = FALSE,)
+  # Print summary of the model
+  return(summary(lm_model))
+}
 
+dependent_vars <- c("Adjusted_predicted_age", "Adjusted_BrainAGE", "predicted_age", "BrainAGE")
 
-```
-Multivariable regression for BrainAGE and PSS
-
-```{r}
-lm_model <- lm(Adjusted_BrainAGE ~ prodromal_psychosis + assigned_sex_at_birth + mean_euler_bh, data = combined_analysis_data)
-
-# View the summary of the regression model
-summary(lm_model)
+for (dep_var in dependent_vars) {
+  cat("Running linear model for:", dep_var, "\n")
+  lm_summary <- run_lm_model(dep_var, c("prodromal_psychosis", "sex", "mean_euler_bh"), cleaned_filtered_data)
+  print(lm_summary)  # Print the summary of the model
+}
 
 # Plot the relationship between predicted age and PSS
-plot(combined_analysis_data$prodromal_psychosis, combined_analysis_data$Adjusted_BrainAGE, 
+plot(cleaned_filtered_data$prodromal_psychosis, cleaned_filtered_data$Adjusted_BrainAGE, 
      main = "Association Between BrainAGE and PSS",
      xlab ="Psychosis Spectrum Symptoms", ylab = "Adjusted BrainAGE" ,
      pch = 19, frame = FALSE,)
@@ -284,17 +356,59 @@ plot(combined_analysis_data$prodromal_psychosis, combined_analysis_data$Adjusted
 Plot the variables of interest just to get an idea of what the data looks like
 
 ```{r}
-# Plot the relationship between predicted age and Mean Euler
-plot(combined_analysis_data$Adjusted_BrainAGE, combined_analysis_data$mean_euler_bh,
+# Plot the relationship between predicted age and Mean Euler (nothing removed)
+plot(datacut_filtered_data$Adjusted_BrainAGE, datacut_filtered_data$mean_euler_bh,
      main = "Association Between BrainAGE and Mean Euler",
-     xlab = "Adjusted BrainAGE", ylab = "Mean Euler",
+     xlab = "BrainAGE", ylab = "Mean Euler",
      pch = 19, frame = FALSE,)
 
+# Plot the relationship between predicted age and Mean Euler with high euler removed
+plot(cleaned_filtered_data$Adjusted_BrainAGE, cleaned_filtered_data$mean_euler_bh,
+     main = "Association Between BrainAGE and Mean Euler",
+     xlab = "Adjusted BrainAGE", ylab = "Mean Euler",
+     pch = 19, frame = FALSE, col = "blue")
+
 # Plot the relationship between predicted PSS and Sex
-plot(combined_analysis_data$prodromal_psychosis, combined_analysis_data$Adjusted_BrainAGE, 
-     main = "Association Between PSS and Sex",
-     xlab = "PSS", ylab = "Sex",
+plot(cleaned_filtered_data$prodromal_psychosis, cleaned_filtered_data$Adjusted_BrainAGE, 
+     main = "Association Between PSS and Adjusted BrainAGE",
+     xlab = "PSS", ylab = "Adjusted BrainAGE",
      pch = 19, frame = FALSE,)
+
+```
+Calculate effect sizes 
+
+```{r}
+
+
+effect_size <- cleaned_filtered_data %>% 
+  cohens_d(Adjusted_BrainAGE ~ prodromal_psychosis)
+
+effect_size_pred_age <- cleaned_filtered_data %>% 
+  cohens_d(predicted_age ~ prodromal_psychosis)
+
+# View the result
+print(effect_size)
+print(effect_size_pred_age)
+
+```
+
+Plot BrainAGE and PSS
+```{r}
+# Create a box plot for brain age by PSS status
+ggplot(cleaned_filtered_data, aes(x = factor(prodromal_psychosis, labels = c("PSS = FALSE", "PSS = TRUE")), y = Adjusted_BrainAGE)) +
+  geom_boxplot(fill = c("lightblue", "salmon")) +  # Add color to the boxes
+  labs(title = "Adjusted BrainAGE According to PSS",
+       x = "PSS",
+       y = "Adjusted BrainAGE") +
+  theme_minimal()
+
+# Create a box plot for predicted age by PSS status
+ggplot(cleaned_filtered_data, aes(x = factor(prodromal_psychosis, labels = c("PSS = FALSE", "PSS = TRUE")), y = Adjusted_predicted_age)) +
+  geom_boxplot(fill = c("lightblue", "salmon")) +  # Add color to the boxes
+  labs(title = "Adjusted Predicted Age According to PSS",
+       x = "PSS",
+       y = "Adjusted Predicted Age") +
+  theme_minimal()
 
 ```
 

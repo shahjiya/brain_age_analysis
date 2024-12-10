@@ -24,7 +24,7 @@ Change sex to "Male" or "Female" depending on analysis.
 #Load excel file
 template_brainage <- read_excel("../data/raw/developmental_template_brainage.xlsx")
 
-sex <- "Male"
+sex <- "Female"
 
 #Load parcellation files
 lh_thick <- read_tsv("../data/raw/00_group2_stats_tables/lh.Schaefer2018_400Parcels.thickness.tsv")

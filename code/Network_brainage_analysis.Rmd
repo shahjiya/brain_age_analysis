@@ -1,14 +1,21 @@
 ---
 title: "network_brainage_merge"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
+Network BrainAGE Analysis Script: This script will combine brainAGE output files and run statistical analysis on the brainAGE outputs and PSS. 
 
 load libraries
 
 ```{r}
+library(ggplot2)
+library(readr)
 library(readxl)
+library(rstatix)
+library(broom)
+library(stringr)
 library(dplyr)
-library(openxlsx)
 ```
 
 The network brain age templated was segmented by 150 participants and thus, the output files are also broken up in this way. To simplify the analysis, the files need to be merged into one .csv file. 
@@ -64,7 +71,7 @@ merge_files_with_pattern <- function(directory, common_patterns, output_file_nam
 Create a list of the file patterns that need to be put into the function and then loop the function through each file pattern to create 8 new merged files with network brainage outputs for both males and females.
 
 ```{r}
-directory <- "/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Network_brainage_output"
+directory <- "/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Full_Network_output"
 common_patterns <- c("Network_Adjusted_BrainAGE", "Network_MR_predicted_age", "Network_BrainAGE", "Network_Adjusted_MR_predicted_age")
 output_file_prefix <- "combined_output"
 merge_files_with_pattern(directory, common_patterns, output_file_prefox)
@@ -75,17 +82,20 @@ load necessary files
 ```{r}
 
 #load network output files
-Network_Adjusted_BrainAGE <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Network_brainage_output/combined_Network_Adjusted_BrainAGE.csv", show_col_types = FALSE)
+Network_Adjusted_BrainAGE <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Full_Network_output/combined_Network_Adjusted_BrainAGE.csv", show_col_types = FALSE)
 
-Network_MR_predicted_age <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Network_brainage_output/combined_Network_MR_predicted_age.csv", show_col_types = FALSE)
+Network_MR_predicted_age <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Full_Network_output/combined_Network_MR_predicted_age.csv", show_col_types = FALSE)
 
-Network_BrainAGE <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Network_brainage_output/combined_Network_BrainAGE.csv", show_col_types = FALSE)
+Network_BrainAGE <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Full_Network_output/combined_Network_BrainAGE.csv", show_col_types = FALSE)
 
-Network_Adjusted_MR_predicted_age <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Network_brainage_output/combined_Network_Adjusted_MR_predicted_age.csv", show_col_types = FALSE)
+Network_Adjusted_MR_predicted_age <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/Full_Network_output/combined_Network_Adjusted_MR_predicted_age.csv", show_col_types = FALSE)
 
 #Load demographic file
 
 tay_demo <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/raw/tay_mri_demo_summer2024.csv", show_col_types = FALSE)
+
+#Load data cut file
+datacut_ids <- read_csv("/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/raw/datacut_ids.csv")
 
 #load euler mean file
 
@@ -102,6 +112,8 @@ clean_subject_ids_demo <- function(df, subject_id) {
 }
 
 TAY_demographics <- clean_subject_ids_demo(tay_demo, "subject_id")
+
+datacut_ids_clean <- clean_subject_ids_demo(datacut_ids, "subject_id")
 
 ```
 clean subject IDs for the euler_data file
@@ -121,6 +133,7 @@ turn the subject Ids to numeric because they wont match the output file otherwis
 
 ```{r}
 TAY_demographics$clean_subject_id <- as.numeric(TAY_demographics$clean_subject_id)
+datacut_ids_clean$clean_subject_id <- as.numeric(datacut_ids_clean$clean_subject_id)
 euler_data_clean$clean_subject_id <- as.numeric(euler_data_clean$clean_subject_id)
 
 print(TAY_demographics)
@@ -169,7 +182,7 @@ final_analysis_data <- final_analysis_data %>%
 Add brain age calculator variables
 
 ```{r}
-final_analysis_data<- final_analysis_data %>%
+final_network_analysis_data<- final_analysis_data %>%
   mutate(adj_pred_error_Vis = Network_Adjusted_BrainAGE$adj_pred_error_Vis, 
          adj_pred_error_SomMot = Network_Adjusted_BrainAGE$adj_pred_error_SomMot,
          adj_pred_error_DorsAttn = Network_Adjusted_BrainAGE$adj_pred_error_DorsAttn,
@@ -203,17 +216,74 @@ final_analysis_data<- final_analysis_data %>%
          pred_age_Default = Network_MR_predicted_age$pred_age_Default,
          )
 
-print(final_analysis_data)
 ```
+
+Filter for people who are in the TAY data cut 
+
+```{r}
+# Assuming 'sub_ID' is the column to match in both data frames and that `t01` is a logical or character column.
+final_network_analysis_data <- final_network_analysis_data %>%
+  # Join with datacut_ids_clean to bring in the 't01' column
+  left_join(datacut_ids_clean %>% select(clean_subject_id, t01), by = "clean_subject_id")
+
+# View the result
+print(final_network_analysis_data)
+
+datacut_filtered_network_data <- final_network_analysis_data %>%
+  filter(t01 == TRUE)
+
+# View the result
+print(datacut_filtered_network_data)
+```
+
+Remove high euler number (cut off above 200)
+
+```{r}
+euler_filtered_network_data <- datacut_filtered_network_data %>%
+  filter(mean_euler_bh >= -200)
+
+print(euler_filtered_network_data)
+```
+
+View all NAs
+
+```{r}
+rows_with_na <- euler_filtered_network_data %>%
+  filter(if_any(everything(), is.na))
+sum(is.na(euler_filtered_network_data$prodromal_psychosis))
+sum(is.na(euler_filtered_network_data$adj_pred_age_Default))
+print(rows_with_na)
+```
+
 
 
 Take out NAs from the dataframes
 
 ```{r}
 
-final_network_analysis_data <- na.omit(final_analysis_data)
+cleaned_filtered_network_data <- na.omit(euler_filtered_network_data)
+
+print(cleaned_filtered_network_data)
+
+write.csv(cleaned_filtered_network_data, "/KIMEL/tigrlab/scratch/jshah/brain_age_analysis/data/processed/complete_network_data.csv", row.names = FALSE)
+
+```
 
 
+Get summary statistics on the dataframe
+
+```{r}
+
+summary(cleaned_filtered_network_data)
+table(cleaned_filtered_network_data$sex)
+
+```
+
+```{r}
+
+# Bonferroni-adjusted significance level
+bonferroni_alpha <- 0.05 / 7
+print(bonferroni_alpha)
 ```
 
 
@@ -237,9 +307,23 @@ dependent_vars <- c("adj_pred_error_Vis", "adj_pred_error_SomMot", "adj_pred_err
 
 for (dep_var in dependent_vars) {
   cat("Running linear model for:", dep_var, "\n")
-  lm_summary <- run_lm_model(dep_var, c("prodromal_psychosis", "sex", "mean_euler_bh"), final_network_analysis_data)
+  lm_summary <- run_lm_model(dep_var, c("prodromal_psychosis", "sex", "mean_euler_bh"), cleaned_filtered_network_data)
   print(lm_summary)  # Print the summary of the model
 }
 
+```
+```{r}
+
+compute_effect_sizes <- function(var) {
+  # Use sym() to allow `cohens_d` to dynamically evaluate the variable name
+  cleaned_filtered_network_data %>%
+    cohens_d(as.formula(paste(var, "~ prodromal_psychosis")))
+}
+
+effect_size_var <- c("adj_pred_error_Vis", "adj_pred_error_SomMot", "adj_pred_error_DorsAttn", "adj_pred_error_SalVentAttn", "adj_pred_error_Limbic", "adj_pred_error_Cont", "adj_pred_error_Default")
+
+effect_sizes_network <- lapply(effect_size_var, compute_effect_sizes)
+
+print(effect_sizes_network)
 ```
 
